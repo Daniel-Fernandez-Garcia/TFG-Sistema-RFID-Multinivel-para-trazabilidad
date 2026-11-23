@@ -1,0 +1,1444 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Base de datos RFID · v2</title>
+<style>
+  :root{
+    --azul:#1f4fbf; --azul-osc:#173c93; --azul-claro:#e8eefb; --azul-borde:#c5d3f2;
+    --texto:#111; --gris:#5b6270; --linea:#e3e6eb; --fondo:#fff; --suave:#f6f7f9;
+    --ok:#1a7f45; --aviso:#b26a00; --error:#b42318;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  /* Pestaña de Pruebas (Banco de pruebas): misma interfaz en un azul más claro, para que se
+     distinga de un vistazo de las pestañas de Explotación */
+  body.modo-pruebas{--azul:#3b8ad9; --azul-osc:#2a6db5; --azul-claro:#eaf3fd; --azul-borde:#bcd8f3}
+  html,body{margin:0;background:var(--fondo);color:var(--texto);
+    font:14px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif}
+  button{font:inherit;cursor:pointer}
+  input,select,textarea{font:inherit;color:var(--texto)}
+
+  /* ---------- barra superior: fila de pestañas + fila de acciones de la pestaña ---------- */
+  .barra{position:sticky;top:0;z-index:20;background:var(--azul);color:#fff;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+  .barra .fila{display:flex;align-items:center;gap:10px;padding:8px 20px;flex-wrap:wrap}
+  .barra .fila.sub{padding:8px 20px 10px;border-top:1px solid rgba(255,255,255,.16)}
+  .marca{font-weight:650;font-size:16px;letter-spacing:.2px;margin-right:14px;white-space:nowrap}
+  .marca small{font-weight:400;opacity:.8;margin-left:6px}
+  .pestanas{display:flex;gap:2px;flex-wrap:wrap;align-items:center}
+  .pestanas button{background:transparent;border:0;border-bottom:2px solid transparent;color:#fff;opacity:.78;
+    padding:8px 12px 6px;font-weight:600}
+  .pestanas button:hover{opacity:1}
+  .pestanas button.on{opacity:1;border-bottom-color:#fff}
+  /* grupos de pestañas: Explotación a la izquierda, Pruebas a la derecha */
+  .grupo-tit{font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-right:4px}
+  .grupo-pruebas{display:flex;align-items:center;gap:10px;margin-left:18px;padding-left:18px;
+    border-left:1px solid rgba(255,255,255,.4)}
+  .grupo-pruebas button{background:#7fb6ec;color:#0b2c57;border:0;border-radius:6px;padding:7px 14px;font-weight:650}
+  .grupo-pruebas button:hover{background:#9cc8f1}
+  .grupo-pruebas button.on{background:#fff;color:#1d5fa3;box-shadow:0 0 0 2px #cfe5fa}
+  .bt-barra{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.45);
+    border-radius:6px;padding:7px 14px;font-weight:550}
+  .bt-barra:hover{background:rgba(255,255,255,.14)}
+  .bt-barra.principal{background:#fff;color:var(--azul);border-color:#fff}
+  .bt-barra.principal:hover{background:var(--azul-claro)}
+  .buscador{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .buscador select,.buscador input{border:0;border-radius:6px;padding:7px 10px;height:34px}
+  .buscador input[type=text]{width:220px}
+  .buscador .limpiar{background:transparent;border:0;color:#fff;opacity:.8;font-size:18px;padding:0 4px}
+  .sub-info{font-size:12.5px;opacity:.85;margin-left:6px}
+  .estado{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;opacity:.95;white-space:nowrap}
+  .estado i{width:8px;height:8px;border-radius:50%;background:#9aa;display:inline-block}
+  .estado.ok i{background:#5ee08f}.estado.mal i{background:#ff8a80}
+
+  /* ---------- zona de vista ---------- */
+  main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:28px;padding:22px 20px 40px;max-width:1400px;margin:0 auto}
+  @media (max-width:980px){main{grid-template-columns:1fr}}
+  h2{font-size:15px;margin:0;font-weight:650}
+  h4{font-size:13px;margin:16px 0 6px;font-weight:650}
+  .cab{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .cab .sub{color:var(--gris);font-size:12.5px}
+  .cab .der{margin-left:auto;display:flex;gap:6px}
+  .bt{background:#fff;border:1px solid var(--linea);border-radius:6px;padding:4px 10px;color:var(--texto);font-size:12.5px}
+  .bt:hover{border-color:var(--azul-borde);background:var(--azul-claro)}
+  .bt.azul{background:var(--azul);color:#fff;border-color:var(--azul)}
+  .bt.azul:hover{background:var(--azul-osc)}
+  .bt.rojo{color:var(--error)}
+  .bt.rojo:hover{background:#fdecea;border-color:#f3c1bb}
+  .bt:disabled{opacity:.45;cursor:not-allowed}
+
+  /* envíos UHF */
+  .uhf{border:1px solid var(--linea);border-radius:8px;margin-bottom:10px;background:#fff;transition:border-color .15s, box-shadow .15s}
+  .uhf.sobre{border-color:var(--azul);box-shadow:0 0 0 3px var(--azul-claro)}
+  .uhf.sel>.uhf-cab{background:var(--azul-claro)}
+  .uhf-cab{display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;border-radius:8px}
+  .uhf-cab:hover{background:var(--suave)}
+  .flecha{width:18px;color:var(--gris);transition:transform .15s;flex:none;text-align:center}
+  .uhf.abierto .flecha, details[open] > summary .flecha{transform:rotate(90deg)}
+  .etq{font-size:11px;font-weight:650;letter-spacing:.4px;border-radius:4px;padding:2px 6px;flex:none}
+  .etq.uhf-t{background:var(--azul);color:#fff}
+  .etq.hf-t{background:var(--azul-claro);color:var(--azul-osc)}
+  .etq.per-t{background:#eef0f3;color:#3b4250}
+  .ref{font-family:var(--mono);font-weight:600}
+  .ruta{color:var(--texto)}
+  .ruta span{color:var(--gris);margin:0 4px}
+  .meta{color:var(--gris);font-size:12.5px;white-space:nowrap}
+  .cnt{margin-left:auto;color:var(--gris);font-size:12.5px;white-space:nowrap}
+  .acc{display:flex;gap:6px;flex:none}
+  .hijos{border-top:1px solid var(--linea);padding:6px 12px 10px 42px;display:none}
+  .uhf.abierto .hijos{display:block}
+  .vacio{color:var(--gris);font-size:12.5px;padding:8px 0;font-style:italic}
+
+  /* filas HF */
+  .hf{display:flex;align-items:center;gap:12px;padding:7px 10px;border:1px solid transparent;border-radius:6px;cursor:grab;background:#fff}
+  .hf + .hf{border-top-color:var(--linea);border-radius:0}
+  .hf:hover{background:var(--suave)}
+  .hf.sel{background:var(--azul-claro);border-color:var(--azul-borde);border-radius:6px}
+  .hf.arrastrando{opacity:.45}
+  .asa{color:#b3b8c2;letter-spacing:-2px;flex:none;user-select:none}
+  .tp{min-width:110px}
+  .uid{font-family:var(--mono);font-size:11.5px;color:var(--gris)}
+  .per-nombre{font-size:12.5px;color:#3b4250;white-space:nowrap}
+
+  /* bit de tamper virtual: 1 = correcto, 0 = posiblemente comprometido. Clic = cambiarlo */
+  .tamper{font-size:11px;font-weight:650;letter-spacing:.3px;border-radius:4px;padding:1px 6px;border:1px solid;flex:none}
+  .tamper.t1{color:var(--ok);border-color:#bfe3cc;background:#effaf3}
+  .tamper.t0{color:#fff;border-color:var(--error);background:var(--error)}
+  .tamper:hover{filter:brightness(.95)}
+
+  .pool{border:1.5px dashed var(--linea);border-radius:8px;padding:8px 10px;margin-top:22px;transition:border-color .15s, background .15s}
+  .pool.sobre{border-color:var(--azul);background:var(--azul-claro)}
+  .pool .cab{margin:2px 2px 6px}
+  .zona-reset{margin-top:28px;display:flex;justify-content:flex-start}
+  .zona-reset .bt{padding:6px 14px}
+
+  /* feed de movimientos */
+  .feed{border-left:1px solid var(--linea);padding-left:24px}
+  @media (max-width:980px){.feed{border-left:0;padding-left:0}}
+  .mov{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:9px 0;border-bottom:1px solid var(--linea)}
+  .mov .punto{width:9px;height:9px;border-radius:50%;margin-top:5px;background:#aab3c2;grid-row:span 2}
+  .mov .l1{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .mov .ev{font-weight:650;font-size:12px;letter-spacing:.3px}
+  .mov .l2{color:var(--gris);font-size:12.5px}
+  .mov.ESCRITURA .punto,.mov.CREADO .punto{background:var(--azul)}
+  .mov.LECTURA .punto,.mov.REGISTRADO .punto,.mov.VERIFICADO .punto{background:var(--ok)}
+  .mov.SOBRESCRITO .punto,.mov.IGNORADO .punto,.mov.TAMPER .punto{background:var(--aviso)}
+  .mov.ELIMINADO .punto,.mov.DISCORDANCIA .punto,.mov.RESET .punto,.mov.USUARIO_BAJA .punto{background:var(--error)}
+  .mov.ASIGNADO .punto,.mov.CONTENIDO .punto,.mov.DESASIGNADO .punto{background:#7a5af5}
+  .mov.VINCULADO .punto,.mov.DESVINCULADO .punto,.mov.USUARIO_ALTA .punto,.mov.USUARIO_EDITADO .punto,.mov.VERIF_FIN .punto{background:#0e7c86}
+
+  /* usuarios y huecos del equipo (casco, chaleco, placa 1, placa 2) */
+  .ident{font-family:var(--mono);font-size:12px;color:#3b4250;background:var(--suave);border-radius:4px;padding:1px 6px}
+  .ident.falta{color:var(--aviso);background:#fff4e0;font-family:inherit}
+  .per-card{border:1px solid var(--linea);border-radius:8px;margin-bottom:10px;background:#fff}
+  .per-cab{display:flex;align-items:center;gap:12px;padding:10px 12px;flex-wrap:wrap}
+  .nombre{font-weight:650}
+  .huecos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:0 12px 12px}
+  @media (max-width:760px){.huecos{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .modal .huecos{padding:0}
+  .hueco{border:1px solid var(--linea);border-radius:6px;padding:8px 10px;min-height:78px;display:flex;flex-direction:column;gap:2px}
+  .hueco.vacio{border-style:dashed;color:var(--gris);background:var(--suave)}
+  .hueco.nuevo{border-color:var(--ok);box-shadow:0 0 0 3px #e3f4ea}
+  .h-tit{font-size:11px;color:var(--gris);font-weight:650;text-transform:uppercase;letter-spacing:.5px}
+  .hueco .pie-h{display:flex;gap:6px;align-items:center;margin-top:auto;padding-top:4px}
+  .hueco .x{margin-left:auto;padding:0 7px}
+
+  /* modal */
+  .velo{position:fixed;inset:0;background:rgba(17,24,39,.35);display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:50}
+  .velo.on{display:flex}
+  .modal{background:#fff;border-radius:10px;width:min(520px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
+  .modal.ancho{width:min(700px,100%)}
+  .modal h3{margin:0;padding:14px 18px;font-size:15px;border-bottom:1px solid var(--linea)}
+  .modal .cuerpo{padding:16px 18px;max-height:72vh;overflow:auto}
+  .modal .pie{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--linea);background:var(--suave)}
+  .modal .pie .bt{padding:7px 14px;font-size:13.5px}
+  .campo{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .campo label{font-size:12.5px;color:var(--gris);font-weight:550}
+  .campo input,.campo select,.campo textarea{border:1px solid #cfd4dc;border-radius:6px;padding:8px 10px}
+  .campo input:focus,.campo select:focus,.campo textarea:focus{outline:2px solid var(--azul-borde);border-color:var(--azul)}
+  .campo input[readonly]{background:var(--suave);font-family:var(--mono)}
+  .campos-2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  .ayuda{font-size:12px;color:var(--gris)}
+  .seg{display:flex;border:1px solid var(--azul);border-radius:7px;overflow:hidden;margin-bottom:16px}
+  .seg button{flex:1;background:#fff;border:0;padding:8px;color:var(--azul);font-weight:600}
+  .seg button.on{background:var(--azul);color:#fff}
+  .seg button small{display:block;font-weight:400;font-size:11.5px;opacity:.85}
+  table.cmp{width:100%;border-collapse:collapse;font-size:13px}
+  table.cmp th,table.cmp td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--linea)}
+  table.cmp th{color:var(--gris);font-weight:550;font-size:12px}
+  table.cmp td.dif{background:#fff6e0;font-weight:600}
+  table.cmp td.num{font-variant-numeric:tabular-nums}
+  .giro{width:34px;height:34px;border:3px solid var(--azul-claro);border-top-color:var(--azul);border-radius:50%;animation:g 0.8s linear infinite;margin:6px auto 12px}
+  @keyframes g{to{transform:rotate(360deg)}}
+  .centro{text-align:center}
+  .err{color:var(--error)}
+  .lista-sel{max-height:300px;overflow:auto;border:1px solid var(--linea);border-radius:6px}
+  .lista-sel label{display:flex;gap:10px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--linea);cursor:pointer}
+  .lista-sel label:hover{background:var(--suave)}
+  .lista-sel label:last-child{border-bottom:0}
+  .crudo{font-family:var(--mono);font-size:12px;background:var(--suave);padding:8px;border-radius:6px;word-break:break-all}
+
+  /* sesiones de lecturas sucesivas (añadir a envío, vincular, verificar) */
+  .sesion-estado{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:7px;background:var(--azul-claro);
+    color:var(--azul-osc);font-weight:550;margin-bottom:12px}
+  .sesion-estado.ok{background:#e9f7ef;color:var(--ok)}
+  .sesion-estado.aviso{background:#fff4e0;color:#8a5200}
+  .sesion-estado.mal{background:#fdecea;color:var(--error)}
+  .pulso{width:10px;height:10px;border-radius:50%;background:var(--azul);flex:none;animation:p 1s ease-in-out infinite}
+  @keyframes p{50%{opacity:.2}}
+  .log{max-height:230px;overflow:auto;border:1px solid var(--linea);border-radius:6px}
+  .log:empty::before{content:"Aún no se ha leído ninguna etiqueta.";display:block;padding:10px;color:var(--gris);font-size:12.5px;font-style:italic}
+  .log-it{display:flex;gap:8px;align-items:baseline;padding:7px 10px;border-bottom:1px solid var(--linea);font-size:13px}
+  .log-it:last-child{border-bottom:0}
+  .ic{width:18px;height:18px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;color:#fff;background:#aab3c2;align-self:flex-start;margin-top:1px}
+  .ic.ok{background:var(--ok)} .ic.mal{background:var(--error)} .ic.aviso{background:var(--aviso)}
+  .ver-it{border:1px solid var(--linea);border-radius:6px;padding:8px 10px;margin-bottom:6px}
+  .ver-it .fila-v{display:flex;gap:10px;align-items:center}
+  .ver-it.ok{border-color:#bfe3cc;background:#f3fbf6}
+  .ver-it.mal{border-color:#f3c1bb;background:#fff6f5}
+  .ver-it .estado-v{margin-left:auto;font-size:12.5px;color:var(--gris)}
+  .ver-it.ok .estado-v{color:var(--ok);font-weight:600}
+  .ver-it.mal .estado-v{color:var(--error);font-weight:600}
+  details.inc{border:1px solid #f3c1bb;background:#fff6f5;border-radius:6px;margin:6px 0 0}
+  .ver-it details.inc{border:0;background:transparent;margin:4px 0 0}
+  details.inc summary{cursor:pointer;padding:7px 10px;color:var(--error);font-weight:600;display:flex;gap:8px;align-items:center;list-style:none;font-size:13px}
+  .ver-it details.inc summary{padding:2px 0 0 28px}
+  details.inc summary::-webkit-details-marker{display:none}
+  details.inc summary::after{content:"Ver detalle ▸";margin-left:auto;color:var(--gris);font-weight:500;font-size:12px}
+  details.inc[open] summary::after{content:"Ocultar ▾"}
+  details.inc .det{padding:2px 10px 10px 36px;font-size:12.5px}
+  .ver-it details.inc .det{padding:4px 0 2px 28px}
+  details.inc .det li{margin:2px 0}
+  .aviso-tamper{margin:6px 0 0 28px;padding:6px 9px;border-radius:5px;background:#fff4e0;color:#7a4a00;font-size:12.5px}
+
+  /* banco de pruebas */
+  details.prueba{border:1px solid var(--linea);border-radius:8px;margin-bottom:10px;background:#fff}
+  details.prueba > summary{display:flex;gap:12px;align-items:center;padding:10px 12px;cursor:pointer;list-style:none;flex-wrap:wrap}
+  details.prueba > summary::-webkit-details-marker{display:none}
+  details.prueba > summary:hover{background:var(--suave);border-radius:8px}
+  details.prueba .cuerpo-p{border-top:1px solid var(--linea);padding:12px 14px}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+  @media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .kpi{border:1px solid var(--linea);border-radius:6px;padding:8px 10px}
+  .kpi b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
+  .kpi span{font-size:11.5px;color:var(--gris)}
+  .barra-prog{height:8px;border-radius:4px;background:var(--azul-claro);overflow:hidden;margin:8px 0 12px}
+  .barra-prog i{display:block;height:100%;background:var(--azul);transition:width .3s}
+  .tipos-prueba{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .tipos-prueba label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--linea);border-radius:7px;padding:9px 11px;cursor:pointer}
+  .tipos-prueba label:has(input:checked){border-color:var(--azul);background:var(--azul-claro)}
+  .tipos-prueba b{display:block;font-size:13.5px}
+  .tipos-prueba span{font-size:12.5px;color:var(--gris)}
+  .check{display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:12px}
+  .ruta-exp{font-family:var(--mono);font-size:12px;background:var(--suave);padding:6px 8px;border-radius:6px;word-break:break-all}
+  .modal a{color:var(--azul)}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:#111;color:#fff;padding:9px 16px;border-radius:7px;font-size:13px;transition:.2s;z-index:60;pointer-events:none}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+  .toast.mal{background:var(--error)}
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <div class="fila">
+    <div class="marca">Base de datos RFID<small>HF ↔ UHF</small></div>
+    <!-- Explotación: el uso diario del sistema -->
+    <nav class="pestanas" id="pestanas">
+      <span class="grupo-tit">Explotación</span>
+      <button data-tab="inv" class="on">Inventario y envíos</button>
+      <button data-tab="ver">Verificación en campo</button>
+    </nav>
+    <div class="estado" id="estado"><i></i><span>Conectando…</span></div>
+    <!-- Pruebas: separado a la derecha y en azul claro -->
+    <nav class="pestanas grupo-pruebas" id="pestanasPruebas">
+      <span class="grupo-tit">Pruebas</span>
+      <button data-tab="banco">Banco de pruebas</button>
+    </nav>
+  </div>
+  <!-- acciones de la pestaña Inventario y envíos -->
+  <div class="fila sub" data-barra="inv">
+    <button class="bt-barra principal" id="btLeer">Leer</button>
+    <button class="bt-barra" id="btEscribir">Escribir</button>
+    <button class="bt-barra" id="btCrear">Crear</button>
+    <button class="bt-barra" id="btExpInv">Exportar a Excel</button>
+    <div class="buscador">
+      <select id="modo" title="Buscar por">
+        <option value="todo">Serie o envío</option>
+        <option value="serie">Nº de serie</option>
+        <option value="envio">Nº de envío</option>
+        <option value="fecha">Fecha</option>
+      </select>
+      <input id="q" type="text" placeholder="Buscar…" autocomplete="off">
+      <input id="qf" type="date" hidden>
+      <button class="limpiar" id="limpiar" title="Limpiar búsqueda">×</button>
+    </div>
+  </div>
+  <!-- acciones de la pestaña Verificación en campo -->
+  <div class="fila sub" data-barra="ver" hidden>
+    <button class="bt-barra principal" id="btNuevoUsuario">Nuevo usuario</button>
+    <button class="bt-barra" id="btExpVer">Exportar a Excel</button>
+    <div class="buscador">
+      <input id="qPer" type="text" placeholder="Nombre, identificación o nº de serie…" autocomplete="off">
+      <button class="limpiar" id="limpiarPer" title="Limpiar búsqueda">×</button>
+    </div>
+  </div>
+  <!-- acciones de la pestaña Banco de pruebas -->
+  <div class="fila sub" data-barra="banco" hidden>
+    <button class="bt-barra principal" id="btIniciarPrueba">Iniciar prueba</button>
+    <button class="bt-barra" id="btExpBanco">Exportar a Excel</button>
+    <span class="sub-info">Los registros de pruebas se conservan aunque se haga reset del inventario.</span>
+  </div>
+</header>
+
+<!-- ============================== Inventario y envíos -->
+<main data-vista="inv">
+  <section>
+    <div class="cab">
+      <h2>Envíos y productos</h2>
+      <span class="sub" id="resumen"></span>
+      <div class="der">
+        <button class="bt" id="expTodo">Expandir todo</button>
+        <button class="bt" id="conTodo">Contraer todo</button>
+      </div>
+    </div>
+    <div id="envios"></div>
+    <div class="pool" id="pool">
+      <div class="cab"><h2>Productos sin envío</h2><span class="sub">Arrastra un producto a un envío para asignarlo; suéltalo aquí para retirarlo.</span></div>
+      <div id="sueltos"></div>
+    </div>
+    <div class="zona-reset"><button class="bt rojo" id="btReset">Reset de la base de datos</button></div>
+  </section>
+
+  <aside class="feed">
+    <div class="cab"><h2>Últimos movimientos</h2><span class="sub" id="resumenFeed"></span></div>
+    <div id="movs"></div>
+  </aside>
+</main>
+
+<!-- ============================== Verificación en campo -->
+<main data-vista="ver" hidden>
+  <section>
+    <div class="cab">
+      <h2>Usuarios y equipos</h2>
+      <span class="sub" id="resumenPer"></span>
+    </div>
+    <div id="usuarios"></div>
+  </section>
+  <aside class="feed">
+    <div class="cab"><h2>Movimientos de equipos</h2></div>
+    <div id="movsEquipo"></div>
+  </aside>
+</main>
+
+<!-- ============================== Banco de pruebas -->
+<main data-vista="banco" hidden>
+  <section>
+    <div class="cab">
+      <h2>Registro de pruebas</h2>
+      <span class="sub" id="resumenBanco"></span>
+    </div>
+    <div id="pruebas"></div>
+  </section>
+  <aside class="feed">
+    <div class="cab"><h2>Prueba en curso</h2></div>
+    <div id="bancoCurso"></div>
+  </aside>
+</main>
+
+<div class="velo" id="velo"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   Lógica de la página. No guarda nada por sí misma: todo se pide al
+   servidor (servidor.py) por la API /api/... y se vuelve a pintar.
+     cargar()   -> trae productos, envíos, movimientos, usuarios y pruebas y llama a pintar()
+     pintar()   -> genera el HTML de las tres pestañas
+     modal()    -> ventana emergente reutilizada por todas las acciones
+     iniciarSesion() -> bucle de lecturas sucesivas (añadir a envío, vincular, verificar)
+     exportarExcel() -> exporta la pestaña a Excel (pide la carpeta la primera vez)
+   Registros: un producto HF (tabla productos) o un envío (tabla envios). En la web se
+   distinguen por 'clase' ("producto" / "envio") y por una clave "p<id>" / "e<id>".
+   ===================================================================== */
+const TIPOS = {CA:"Casco", CH:"Chaleco", PB:"Placa balística"};
+const EVENTOS = {CREADO:"Creado", LECTURA:"Lectura", REGISTRADO:"Registrado", ESCRITURA:"Escritura",
+  SOBRESCRITO:"Sobrescrito", IGNORADO:"Lectura ignorada", ASIGNADO:"Asignado", CONTENIDO:"Añadido al envío",
+  DESASIGNADO:"Retirado del envío", ELIMINADO:"Eliminado", TAMPER:"Tamper cambiado", RESET:"Reset",
+  USUARIO_ALTA:"Alta de usuario", USUARIO_BAJA:"Baja de usuario", USUARIO_EDITADO:"Usuario editado",
+  VINCULADO:"Vinculado", DESVINCULADO:"Desvinculado",
+  VERIFICADO:"Verificado", DISCORDANCIA:"Discordancia", VERIF_FIN:"Verificación finalizada"};
+// Eventos que se muestran en la columna derecha de Verificación en campo
+const EV_EQUIPO = new Set(["USUARIO_ALTA", "USUARIO_BAJA", "USUARIO_EDITADO", "VINCULADO", "DESVINCULADO",
+  "VERIFICADO", "DISCORDANCIA", "VERIF_FIN", "TAMPER"]);
+// Huecos de la tabla equipos (columna, tipo de producto, nombre), en el orden en que se muestran
+const HUECOS = [["casco_id", "CA", "Casco"], ["chaleco_id", "CH", "Chaleco"],
+  ["placa1_id", "PB", "Placa 1"], ["placa2_id", "PB", "Placa 2"]];
+const TIPOS_PRUEBA = {
+  lectura: ["Lectura múltiple", "Lee la misma etiqueta N veces seguidas. No modifica la etiqueta."],
+  escritura_lectura: ["Escritura y lectura múltiple", "N ciclos: escribe el mismo texto, lo lee y comprueba que coincide."],
+  datos_distintos: ["Escritura y lectura con distintos datos", "N ciclos: escribe cada vez un producto distinto (nº de serie hexadecimal que avanza y tipo CA/CH/PB) y lo comprueba."]};
+
+// Estado en memoria: copia de lo que devolvió el servidor + selección actual de la lista
+let productos = [], envios = [], movimientos = [], usuarios = [], pruebas = [];
+let seleccionado = null, siguienteSerie = "0000000";      // seleccionado = "p<id>" o "e<id>"
+// Envíos expandidos; se recuerdan en el navegador (localStorage) entre recargas
+let abiertos = new Set();
+try { abiertos = new Set(JSON.parse(localStorage.getItem("rfid2_abiertos") || "[]")); } catch(e) {}
+const guardarAbiertos = () => { try { localStorage.setItem("rfid2_abiertos", JSON.stringify([...abiertos])); } catch(e) {} };
+// Pruebas del banco desplegadas (se mantienen al repintar)
+const pruebasAbiertas = new Set();
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dormir = ms => new Promise(r => setTimeout(r, ms));
+// Clave de selección, referencia visible y etiqueta HF/UHF de un registro
+const clave = (clase, id) => (clase === "envio" ? "e" : "p") + id;
+const refDe = (clase, o) => clase === "envio" ? o.numero : o.serie;
+const tipoDe = clase => clase === "envio" ? "UHF" : "HF";
+const registroDe = (clase, id) => (clase === "envio" ? envios : productos).find(x => x.id === id);
+// Tipo de tag que se muestra detrás del UID (" - Ultralight/NTAG"). Vacío en registros antiguos sin tipo.
+const conTarjeta = t => t ? " - " + esc(t) : "";
+// Las fechas se guardan (base de datos y etiquetas) en ISO 8601, "2026-11-09T14:19"; en pantalla
+// se muestran de forma legible, "09/11/2026 14:19". Si el texto no es una fecha ISO se deja tal cual.
+const fFecha = iso => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ""}` : (iso || "");
+};
+const nombreCompleto = u => u ? `${u.nombre} ${u.apellidos || ""}`.trim() : "";
+const usuarioDe = id => usuarios.find(x => x.id === id);
+// Chip del tamper; data-tamper hace que un clic lo cambie (ver manejador de clics)
+const chipTamper = p => p.tamper == null ? "" :
+  `<button class="tamper t${p.tamper}" data-tamper="${p.id}" title="Clic para cambiar el tamper (pruebas)">Tamper ${p.tamper}</button>`;
+
+// Llamada a la API: envía/recibe JSON y convierte las respuestas de error en excepciones
+async function api(ruta, opciones = {}) {
+  const r = await fetch(ruta, {headers: {"Content-Type": "application/json"}, ...opciones,
+    body: opciones.body ? JSON.stringify(opciones.body) : undefined});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
+  return d;
+}
+
+function toast(msg, mal = false) {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast on" + (mal ? " mal" : "");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.className = "toast", 2800);
+}
+
+/* ------------------------------------------------------------ pestañas
+   Dos grupos: Explotación (Inventario y Verificación) a la izquierda y Pruebas (Banco de
+   pruebas) a la derecha. Con el banco activo, <body> lleva la clase modo-pruebas, que cambia
+   los tonos de azul de toda la interfaz. La pestaña activa se recuerda en el navegador. */
+let pestana = "inv";
+function verPestana(t) {
+  if (!["inv", "ver", "banco"].includes(t)) t = "inv";
+  pestana = t;
+  document.querySelectorAll("#pestanas button, #pestanasPruebas button")
+    .forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  document.querySelectorAll("main[data-vista]").forEach(m => m.hidden = m.dataset.vista !== t);
+  document.querySelectorAll("[data-barra]").forEach(m => m.hidden = m.dataset.barra !== t);
+  document.body.classList.toggle("modo-pruebas", t === "banco");
+  try { localStorage.setItem("rfid_pestana", t); } catch(e) {}
+}
+for (const n of ["#pestanas", "#pestanasPruebas"])
+  $(n).onclick = e => { const b = e.target.closest("button[data-tab]"); if (b) verPestana(b.dataset.tab); };
+try { verPestana(localStorage.getItem("rfid_pestana") || "inv"); } catch(e) { verPestana("inv"); }
+
+/* ------------------------------------------------------------ datos */
+async function cargar() {
+  try {
+    [productos, envios, movimientos, usuarios, pruebas] = await Promise.all([
+      api("/api/productos"), api("/api/envios"), api("/api/movimientos"), api("/api/usuarios"), api("/api/pruebas")]);
+    pintar();
+  } catch (e) { setEstado(false, "Servidor no disponible"); }
+}
+async function cargarEstado() {
+  try {
+    const e = await api("/api/estado");
+    siguienteSerie = e.siguiente_serie;
+    setEstado(e.lector.ok, e.lector.detalle);
+  } catch (e) { setEstado(false, "Servidor no disponible"); }
+}
+function setEstado(ok, txt) {
+  const el = $("#estado"); el.className = "estado " + (ok ? "ok" : "mal");
+  el.querySelector("span").textContent = txt;
+}
+
+/* ------------------------------------------------------------ búsqueda
+   El filtrado se hace en el navegador sobre los datos ya cargados.
+   Las fechas están en ISO 8601 (YYYY-MM-DDThh:mm), así que el día elegido en el
+   calendario (YYYY-MM-DD) se compara directamente con el inicio del texto. */
+function filtro() {
+  const modo = $("#modo").value, q = $("#q").value.trim().toUpperCase(), f = $("#qf").value;
+  if (modo === "fecha") return f ? {modo, f} : null;
+  return q ? {modo, q} : null;
+}
+function coincide(clase, o, fl) {
+  if (!fl) return true;
+  if (fl.modo === "fecha") return (o.fecha || "").startsWith(fl.f);
+  const ref = (refDe(clase, o) || "").toUpperCase();
+  if (fl.modo === "serie") return clase === "producto" && ref.includes(fl.q);
+  if (fl.modo === "envio") return clase === "envio" && ref.includes(fl.q);
+  return ref.includes(fl.q);
+}
+
+/* ------------------------------------------------------------ pintado */
+function pintar() { pintarInventario(); pintarUsuarios(); pintarBanco(); }
+
+function filaHF(p) {
+  const u = p.usuario_id ? usuarioDe(p.usuario_id) : null;
+  return `<div class="hf ${seleccionado === clave("producto", p.id) ? "sel" : ""}" draggable="true" data-id="${p.id}">
+    <span class="asa">⋮⋮</span>
+    <span class="etq hf-t">HF</span>
+    <span class="ref">${esc(p.serie)}</span>
+    <span class="tp">${esc(p.tipo_producto)} · ${esc(TIPOS[p.tipo_producto] || "—")}</span>
+    <span class="meta">${esc(fFecha(p.fecha))}</span>
+    <span class="uid">${p.uid ? "UID " + esc(p.uid) + conTarjeta(p.tarjeta) : "sin grabar"}</span>
+    ${u ? `<span class="per-nombre" title="En el equipo de este usuario">· ${esc(nombreCompleto(u))}</span>` : ""}
+    <span class="acc" style="margin-left:auto">
+      ${chipTamper(p)}
+      <button class="bt" data-escribir="p${p.id}">Escribir</button>
+      <button class="bt rojo" data-borrar="p${p.id}" title="Eliminar">×</button>
+    </span></div>`;
+}
+
+// Un envío se muestra si él o alguno de sus productos coincide con la búsqueda; si solo
+// coinciden sus productos, se expande automáticamente y se muestran solo esos.
+function pintarInventario() {
+  const fl = filtro();
+  const hijosDe = id => productos.filter(h => h.envio_id === id);
+
+  let html = "", visibles = 0;
+  for (const e of envios) {
+    const hijos = hijosDe(e.id);
+    const propia = coincide("envio", e, fl);
+    const hijosOk = hijos.filter(h => coincide("producto", h, fl));
+    if (fl && !propia && !hijosOk.length) continue;
+    visibles++;
+    const mostrar = fl && !propia ? hijosOk : hijos;
+    const abierto = abiertos.has(e.id) || (fl && !propia && hijosOk.length);
+    html += `<div class="uhf ${abierto ? "abierto" : ""} ${seleccionado === clave("envio", e.id) ? "sel" : ""}" data-envio="${e.id}">
+      <div class="uhf-cab" data-toggle="${e.id}">
+        <span class="flecha">▶</span>
+        <span class="etq uhf-t">UHF</span>
+        <span class="ref">${esc(e.numero)}</span>
+        <span class="ruta">${esc(e.origen)}<span>→</span>${esc(e.destino)}</span>
+        <span class="meta">${esc(fFecha(e.fecha))}</span>
+        <span class="uid">${e.uid ? "UID " + esc(e.uid) + conTarjeta(e.tarjeta) : "sin grabar"}</span>
+        <span class="cnt">${hijos.length} HF</span>
+        <span class="acc">
+          <button class="bt" data-anadir="${e.id}" title="Añadir productos leyendo sus etiquetas">Añadir por lectura</button>
+          <button class="bt" data-escribir="e${e.id}">Escribir</button>
+          <button class="bt rojo" data-borrar="e${e.id}" title="Eliminar">×</button>
+        </span>
+      </div>
+      <div class="hijos">${mostrar.length ? mostrar.map(filaHF).join("") :
+        `<div class="vacio">Sin productos. Arrastra aquí productos de la lista inferior o usa «Añadir por lectura».</div>`}</div>
+    </div>`;
+  }
+  if (!envios.length) html = `<div class="vacio">Todavía no hay envíos. Crea uno con «Crear» (tipo UHF).</div>`;
+  else if (!visibles) html = `<div class="vacio">Ningún envío coincide con la búsqueda.</div>`;
+  $("#envios").innerHTML = html;
+
+  const sueltos = productos.filter(h => h.envio_id == null && coincide("producto", h, fl));
+  $("#sueltos").innerHTML = sueltos.length ? sueltos.map(filaHF).join("") :
+    `<div class="vacio">${fl ? "Ningún producto sin envío coincide con la búsqueda." : "No hay productos sin envío."}</div>`;
+
+  $("#resumen").textContent = `${envios.length} envíos · ${productos.length} productos HF`;
+
+  // feed
+  let movs = movimientos;
+  if (fl) movs = movs.filter(m => fl.modo === "fecha" ? m.fecha.startsWith(fl.f)
+    : (m.ref || "").toUpperCase().includes(fl.q) || (fl.modo === "todo" && (m.uid || "").toUpperCase().includes(fl.q)));
+  $("#resumenFeed").textContent = fl ? `${movs.length} resultados` : "";
+  $("#movs").innerHTML = htmlFeed(movs) || `<div class="vacio">Sin movimientos${fl ? " para esta búsqueda" : ""}.</div>`;
+}
+
+// HTML de una lista de movimientos (columna derecha de Inventario y de Verificación)
+function htmlFeed(movs) {
+  const chip = t => t === "UHF" ? `<span class="etq uhf-t">UHF</span>` : t === "USR" ? `<span class="etq per-t">USUARIO</span>`
+    : t ? `<span class="etq hf-t">${esc(t)}</span>` : "";
+  return movs.slice(0, 150).map(m => `
+    <div class="mov ${m.evento}">
+      <span class="punto"></span>
+      <div class="l1"><span class="ev">${esc(EVENTOS[m.evento] || m.evento)}</span>
+        ${m.ref ? `<span class="ref">${esc(m.ref)}</span>` : ""}${chip(m.tipo)}</div>
+      <div class="l2">${esc(fFecha(m.fecha))}${m.detalle ? " · " + esc(m.detalle) : ""}${m.uid ? ` · UID ${esc(m.uid)}${conTarjeta(m.tarjeta)}` : ""}</div>
+    </div>`).join("");
+}
+
+/* ------------------------------------------------------------ pintado: Verificación en campo */
+// Huecos del equipo de un usuario según su fila de la tabla equipos (casco, chaleco, placa 1, placa 2)
+function huecosDe(usrId) {
+  const u = usuarioDe(usrId) || {};
+  return HUECOS.map(([col, tp, nombre]) => ({col, tp, nombre, p: u[col] ? productos.find(x => x.id === u[col]) : null}));
+}
+const nEquipo = usrId => huecosDe(usrId).filter(h => h.p).length;
+function htmlHuecos(usrId, resaltar = null) {
+  return `<div class="huecos">${huecosDe(usrId).map(({nombre, p}) => p ? `
+    <div class="hueco ${resaltar === p.id ? "nuevo" : ""}">
+      <span class="h-tit">${nombre}</span>
+      <span class="ref">${esc(p.serie)}</span>
+      <span class="uid">${p.uid ? esc(p.uid) + conTarjeta(p.tarjeta) : "sin grabar"}</span>
+      <span class="pie-h">${chipTamper(p)}<button class="bt rojo x" data-desvincular="${p.id}" title="Desvincular del equipo">×</button></span>
+    </div>` : `
+    <div class="hueco vacio"><span class="h-tit">${nombre}</span><span>Vacío</span></div>`).join("")}</div>`;
+}
+function pintarUsuarios() {
+  const q = $("#qPer").value.trim().toUpperCase();
+  const lista = usuarios.filter(u => !q || nombreCompleto(u).toUpperCase().includes(q) ||
+    (u.identificacion || "").toUpperCase().includes(q) ||
+    huecosDe(u.id).some(h => h.p && h.p.serie.includes(q)));
+  $("#usuarios").innerHTML = lista.map(u => `<div class="per-card">
+      <div class="per-cab">
+        <span class="etq per-t">USUARIO</span>
+        <span class="nombre">${esc(nombreCompleto(u))}</span>
+        ${u.identificacion ? `<span class="ident" title="Identificación">${esc(u.identificacion)}</span>`
+          : `<span class="ident falta" title="Usuario migrado de la versión anterior: edítalo para añadir su identificación">sin identificación</span>`}
+        <span class="meta">alta ${esc(fFecha(u.fecha))}</span>
+        <span class="cnt">${nEquipo(u.id)} de 4 en el equipo</span>
+        <span class="acc">
+          <button class="bt" data-vincular="${u.id}">Vincular por lectura</button>
+          <button class="bt azul" data-verificar="${u.id}">Verificación</button>
+          <button class="bt" data-editarusr="${u.id}">Editar</button>
+          <button class="bt rojo" data-borrarusr="${u.id}" title="Eliminar usuario">×</button>
+        </span>
+      </div>
+      ${htmlHuecos(u.id)}
+    </div>`).join("") || `<div class="vacio">${q ? "Ningún usuario coincide con la búsqueda." :
+    "Todavía no hay usuarios. Crea uno con «Nuevo usuario»."}</div>`;
+  $("#resumenPer").textContent = `${usuarios.length} usuarios`;
+  $("#movsEquipo").innerHTML = htmlFeed(movimientos.filter(m => EV_EQUIPO.has(m.evento))) ||
+    `<div class="vacio">Sin movimientos de equipos.</div>`;
+}
+
+/* ------------------------------------------------------------ interacción en la lista
+   data-escribir / data-borrar llevan la clave del registro: "p<id>" (producto) o "e<id>" (envío). */
+const deClave = k => [k[0] === "e" ? "envio" : "producto", +k.slice(1)];
+document.addEventListener("click", async ev => {
+  const t = ev.target;
+  const d = (k) => t.closest(`[data-${k}]`);
+  let el;
+  if ((el = d("tamper"))) { ev.stopPropagation(); return cambiarTamper(+el.dataset.tamper); }
+  if ((el = d("escribir"))) { ev.stopPropagation(); return escribir(...deClave(el.dataset.escribir)); }
+  if ((el = d("borrar"))) { ev.stopPropagation(); return borrar(...deClave(el.dataset.borrar)); }
+  if ((el = d("anadir"))) { ev.stopPropagation(); return anadirPorLectura(+el.dataset.anadir); }
+  if ((el = d("vincular"))) return vincularPorLectura(+el.dataset.vincular);
+  if ((el = d("verificar"))) return verificar(+el.dataset.verificar);
+  if ((el = d("editarusr"))) return formUsuario(+el.dataset.editarusr);
+  if ((el = d("borrarusr"))) return borrarUsuario(+el.dataset.borrarusr);
+  if ((el = d("desvincular"))) return desvincular(+el.dataset.desvincular);
+  const tog = t.closest("[data-toggle]");
+  if (tog) {
+    const id = +tog.dataset.toggle;
+    abiertos.has(id) ? abiertos.delete(id) : abiertos.add(id);
+    seleccionado = clave("envio", id); guardarAbiertos(); return pintar();
+  }
+  const hf = t.closest(".hf");
+  if (hf) { seleccionado = clave("producto", +hf.dataset.id); pintar(); }
+});
+
+$("#expTodo").onclick = () => { envios.forEach(e => abiertos.add(e.id)); guardarAbiertos(); pintar(); };
+$("#conTodo").onclick = () => { abiertos.clear(); guardarAbiertos(); pintar(); };
+
+/* arrastrar y soltar (API nativa de HTML5)
+   dragstart guarda el id del producto; al soltar sobre un envío se asigna a él,
+   y al soltar sobre #pool (productos sin envío) se envía envio_id = null. */
+let arrastrado = null;
+document.addEventListener("dragstart", ev => {
+  const hf = ev.target.closest?.(".hf"); if (!hf) return;
+  arrastrado = +hf.dataset.id; hf.classList.add("arrastrando");
+  ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", hf.dataset.id);
+});
+document.addEventListener("dragend", () => {
+  arrastrado = null;
+  document.querySelectorAll(".arrastrando,.sobre").forEach(e => e.classList.remove("arrastrando", "sobre"));
+});
+function destino(ev) { return ev.target.closest?.(".uhf") || ev.target.closest?.("#pool"); }
+document.addEventListener("dragover", ev => {
+  if (arrastrado == null) return;
+  const d = destino(ev); if (!d) return;
+  ev.preventDefault();
+  document.querySelectorAll(".sobre").forEach(e => e !== d && e.classList.remove("sobre"));
+  d.classList.add("sobre");
+});
+document.addEventListener("drop", async ev => {
+  const d = destino(ev); if (!d || arrastrado == null) return;
+  ev.preventDefault();
+  const envio_id = d.id === "pool" ? null : +d.dataset.envio;
+  const p = productos.find(x => x.id === arrastrado);
+  if (!p || p.envio_id === envio_id) return;
+  try {
+    await api("/api/asignar", {method: "POST", body: {producto_id: arrastrado, envio_id}});
+    if (envio_id) abiertos.add(envio_id), guardarAbiertos();
+    const e = envios.find(x => x.id === envio_id);
+    toast(envio_id ? `${p.serie} asignado al envío ${e.numero}` : `${p.serie} retirado del envío`);
+    cargar();
+  } catch (e) { toast(e.message, true); }
+});
+
+/* ------------------------------------------------------------ búsqueda */
+$("#modo").onchange = () => {
+  const f = $("#modo").value === "fecha";
+  $("#q").hidden = f; $("#qf").hidden = !f;
+  $("#q").placeholder = {todo: "Serie o envío…", serie: "Ej. 000001A", envio: "Ej. ENV-001"}[$("#modo").value] || "";
+  pintar();
+};
+$("#q").oninput = pintar; $("#qf").oninput = pintar;
+$("#limpiar").onclick = () => { $("#q").value = ""; $("#qf").value = ""; pintar(); };
+$("#qPer").oninput = pintarUsuarios;
+$("#limpiarPer").onclick = () => { $("#qPer").value = ""; pintarUsuarios(); };
+
+/* ------------------------------------------------------------ modal */
+function modal(titulo, cuerpo, botones = [{t: "Cerrar"}], ancho = false) {
+  const m = $("#modal");
+  m.className = "modal" + (ancho ? " ancho" : "");
+  m.innerHTML = `<h3>${titulo}</h3><div class="cuerpo">${cuerpo}</div><div class="pie"></div>`;
+  ponerBotones(botones);
+  $("#velo").classList.add("on");
+  return m;
+}
+// Sustituye los botones del pie del modal abierto (las sesiones los cambian al terminar)
+function ponerBotones(botones) {
+  const pie = $("#modal .pie"); pie.innerHTML = "";
+  botones.forEach(b => {
+    const el = document.createElement("button");
+    el.className = "bt " + (b.c || ""); el.textContent = b.t;
+    if (b.id) el.id = b.id;
+    el.onclick = async () => { if (b.f) { if (await b.f() === false) return; } else cerrar(); };
+    pie.appendChild(el);
+  });
+}
+function cerrar() { $("#velo").classList.remove("on"); }
+$("#velo").addEventListener("mousedown", e => { if (e.target.id === "velo" && !espera) cerrar(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !espera) cerrar(); });
+// 'espera' = hay una operación del lector en curso: bloquea cerrar el modal y la recarga automática
+let espera = false;
+function esperando(titulo, texto) {
+  espera = true;
+  modal(titulo, `<div class="centro"><div class="giro"></div>${texto}</div>`, []);
+}
+
+/* ------------------------------------------------------------ LEER
+   1) POST /api/leer (el servidor espera la tag hasta 10 s)
+   2) según r.resultado: sin_formato / nuevo / coincide; r.clase dice si es producto o envío
+   3) si coincide, los botones llaman a resolver() -> POST /api/lectura/resolver */
+$("#btLeer").onclick = async () => {
+  esperando("Leer etiqueta", "Acerca la etiqueta al lector y no la retires…");
+  let r;
+  try { r = await api("/api/leer", {method: "POST"}); }
+  catch (e) { espera = false; modal("No se pudo leer", `<p class="err">${esc(e.message)}</p>`); return; }
+  espera = false; await cargar();
+
+  const L = r.lectura;
+  const v1 = r.leido && r.leido.formato === "RFID1"
+    ? `<p class="ayuda">Etiqueta grabada con el formato anterior (RFID1); sus datos se han convertido al formato actual
+       (nº de serie hexadecimal y fecha ISO 8601). Puedes regrabarla con «Escribir».</p>` : "";
+  const info = `<p class="ayuda">UID <b class="ref">${esc(L.uid)}</b> · ${esc(L.tarjeta)}</p>`;
+  if (r.resultado === "sin_formato") {
+    modal("Etiqueta sin datos", info +
+      `<p>La etiqueta no contiene un producto ni un envío creado con esta web. Se ha anotado la lectura en el registro.</p>
+       <div class="crudo">${L.texto ? esc(L.texto) : "(vacía)"}</div>`);
+  } else if (r.resultado === "nuevo") {
+    modal("Etiqueta registrada", info + v1 +
+      `<p>No existía en la base de datos y se ha añadido:</p>${tablaRegistro(r.clase, r.registro)}`);
+  } else {
+    const ex = r.existente, ld = r.leido, cl = r.clase;
+    const cuerpo = info + v1 + `<p>Los datos leídos coinciden con <b>${cl === "envio" ? "el envío" : "el producto"} ${esc(refDe(cl, ex))}</b>
+      de la base de datos. ¿Quieres sobrescribir el registro con lo leído o dejarlo como está?</p>` + tablaComparar(cl, ex, ld, L);
+    modal("Coincidencia en la base de datos", cuerpo, [
+      {t: "Dejar e ignorar", f: () => resolver("ignorar", cl, ex.id, ld, L.uid, L.tarjeta)},
+      {t: "Sobrescribir", c: "azul", f: () => resolver("sobrescribir", cl, ex.id, ld, L.uid, L.tarjeta)},
+    ]);
+  }
+};
+async function resolver(accion, clase, id, leido, uid, tarjeta) {
+  try {
+    await api("/api/lectura/resolver", {method: "POST", body: {accion, clase, id, leido, uid, tarjeta}});
+    cerrar(); toast(accion === "sobrescribir" ? "Registro sobrescrito con los datos de la tag" : "Lectura ignorada; se mantiene el registro");
+    cargar();
+  } catch (e) { toast(e.message, true); }
+}
+function camposDe(clase) {
+  return clase === "producto"
+    ? [["serie", "Nº de serie"], ["tipo_producto", "Tipo de producto"], ["fecha", "Fecha"]]
+    : [["numero", "Nº de envío"], ["origen", "Origen"], ["destino", "Destino"], ["fecha", "Fecha"]];
+}
+function tablaRegistro(clase, o) {
+  return `<table class="cmp"><tr><th>Tipo</th><td>${tipoDe(clase)} · ${clase === "envio" ? "envío" : "producto"}</td></tr>${
+    camposDe(clase).map(([k, n]) =>
+    `<tr><th>${n}</th><td>${esc(k === "fecha" ? fFecha(o[k]) : o[k])}${k === "tipo_producto" && TIPOS[o[k]] ? " · " + TIPOS[o[k]] : ""}</td></tr>`).join("")}${
+    clase === "producto" && o.tamper != null ? `<tr><th>Tamper</th><td>${o.tamper}${o.tamper === 0 ? " · posiblemente comprometido" : " · correcto"}</td></tr>` : ""}</table>`;
+}
+function tablaComparar(clase, ex, ld, L) {
+  const filas = (ld && ld.tipo === tipoDe(clase) ? camposDe(clase) : []).map(([k, n]) => {
+    const dif = (ex[k] ?? "") !== (ld[k] ?? "");
+    const ver = v => esc(k === "fecha" ? fFecha(v) : v);
+    return `<tr><th>${n}</th><td>${ver(ex[k])}</td><td class="${dif ? "dif" : ""}">${ver(ld[k])}</td></tr>`;
+  });
+  const difUid = (ex.uid || "") !== L.uid;
+  filas.push(`<tr><th>UID</th><td class="uid">${esc(ex.uid || "—")}${ex.uid ? conTarjeta(ex.tarjeta) : ""}</td><td class="uid ${difUid ? "dif" : ""}">${esc(L.uid)}${conTarjeta(L.tarjeta)}</td></tr>`);
+  const iguales = !filas.some(f => f.includes(' dif"') || f.includes('"dif"'));
+  return `<table class="cmp"><tr><th>Campo</th><th>En la base de datos</th><th>Leído de la tag</th></tr>${filas.join("")}</table>
+    <p class="ayuda" style="margin-top:8px">${iguales ? "Los datos son idénticos." : "Las celdas resaltadas son las que cambiarían al sobrescribir."}</p>`;
+}
+
+/* ------------------------------------------------------------ CREAR
+   HF  -> POST /api/productos {tipo_producto, tamper}       (tabla productos)
+   UHF -> POST /api/envios    {numero, origen, destino}      (tabla envios)
+   Antes se pide /api/estado para mostrar el siguiente nº de serie (solo informativo:
+   el número definitivo lo asigna el servidor al crear). */
+$("#btCrear").onclick = async () => {
+  await cargarEstado();
+  let tipo = "HF";
+  const m = modal("Crear", `
+    <div class="seg"><button data-t="UHF">UHF<small>Envío (contenedor)</small></button><button data-t="HF" class="on">NFC / HF<small>Producto individual</small></button></div>
+    <div id="fUHF" hidden>
+      <div class="campo"><label>Número de envío</label><input id="cEnvio" maxlength="24" placeholder="Ej. ENV-2026-001"></div>
+      <div class="campo"><label>Origen</label><input id="cOrigen" maxlength="40" placeholder="Ej. Zaragoza"></div>
+      <div class="campo"><label>Destino</label><input id="cDestino" maxlength="40" placeholder="Ej. Madrid"></div>
+    </div>
+    <div id="fHF">
+      <div class="campo"><label>Número de serie (hexadecimal)</label><input readonly value="${esc(siguienteSerie)}" style="font-family:var(--mono)">
+        <span class="ayuda">Se asigna automáticamente a partir del último número creado (0000000 a FFFFFFF).</span></div>
+      <div class="campo"><label>Tipo de producto</label><select id="cTipo">
+        ${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}">${k} · ${v}</option>`).join("")}</select></div>
+      <div class="campo"><label>Tamper</label><select id="cTamper">
+        <option value="1" selected>1 · correcto</option>
+        <option value="0">0 · posiblemente comprometido (pruebas)</option></select>
+        <span class="ayuda">Bit virtual guardado en la base de datos; no se graba en la etiqueta.</span></div>
+    </div>
+    <div class="campo"><label>Fecha y hora</label><input readonly style="font-family:inherit" value="Se rellena al crear (en la etiqueta se graba en ISO 8601)"></div>
+    <p class="err" id="cErr"></p>`, [
+      {t: "Cancelar"},
+      {t: "Crear", c: "azul", f: async () => {
+        const clase = tipo === "HF" ? "producto" : "envio";
+        try {
+          const o = clase === "producto"
+            ? await api("/api/productos", {method: "POST", body: {tipo_producto: $("#cTipo").value, tamper: +$("#cTamper").value}})
+            : await api("/api/envios", {method: "POST", body: {numero: $("#cEnvio").value, origen: $("#cOrigen").value, destino: $("#cDestino").value}});
+          await cargar(); cargarEstado(); seleccionado = clave(clase, o.id); pintar();
+          modal(clase === "producto" ? "Producto creado" : "Envío creado", tablaRegistro(clase, o) +
+            `<p class="ayuda" style="margin-top:10px">Puedes grabarlo ahora en una etiqueta o más tarde con «Escribir».</p>`,
+            [{t: "Cerrar"}, {t: "Escribir en tag", c: "azul", f: () => escribir(clase, o.id, true)}]);
+        } catch (e) { $("#cErr").textContent = e.message; }
+        return false;
+      }}]);
+  m.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    tipo = b.dataset.t;
+    m.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
+    $("#fUHF").hidden = tipo !== "UHF"; $("#fHF").hidden = tipo !== "HF";
+    if (tipo === "UHF") $("#cEnvio").focus();
+  });
+};
+
+/* ------------------------------------------------------------ ESCRIBIR
+   Si hay un producto o envío seleccionado se graba ese; si no, se elige de una lista.
+   escribir(clase, id, directo) -> confirmación (salvo directo) -> POST /api/escribir {clase, id} */
+$("#btEscribir").onclick = () => {
+  if (seleccionado) {
+    const [cl, id] = deClave(seleccionado);
+    if (registroDe(cl, id)) return escribir(cl, id);
+  }
+  const todos = [...envios.map(o => ["envio", o]), ...productos.map(o => ["producto", o])]
+    .sort((a, b) => (b[1].fecha || "").localeCompare(a[1].fecha || ""));
+  if (!todos.length) return modal("Escribir", "<p>No hay productos ni envíos. Crea uno primero con «Crear».</p>");
+  modal("¿Qué quieres grabar?", `<div class="lista-sel">${todos.map(([cl, o], i) =>
+    `<label><input type="radio" name="pSel" value="${clave(cl, o.id)}" ${i ? "" : "checked"}>
+      <span class="etq ${cl === "envio" ? "uhf-t" : "hf-t"}">${tipoDe(cl)}</span>
+      <span class="ref">${esc(refDe(cl, o))}</span><span class="meta">${esc(fFecha(o.fecha))}</span></label>`).join("")}</div>`,
+    [{t: "Cancelar"}, {t: "Continuar", c: "azul", f: () => escribir(...deClave(document.querySelector("input[name=pSel]:checked").value))}]);
+};
+async function escribir(clase, id, directo = false) {
+  const o = registroDe(clase, id); if (!o) return;
+  const ejecutar = async () => {
+    esperando("Escribir etiqueta", `Grabando <b class="ref">${esc(refDe(clase, o))}</b>.<br>Acerca una etiqueta al lector y no la retires hasta que termine…`);
+    try {
+      const r = await api("/api/escribir", {method: "POST", body: {clase, id}});
+      espera = false; await cargar();
+      modal("Etiqueta grabada", `<p>Datos escritos y verificados en la etiqueta.</p>
+        <p class="ayuda">UID <b class="ref">${esc(r.escritura.uid)}</b> · ${esc(r.escritura.tarjeta)}</p>
+        <div class="crudo">${esc(r.escritura.texto)}</div>`);
+    } catch (e) { espera = false; modal("No se pudo escribir", `<p class="err">${esc(e.message)}</p>`); }
+    return false;
+  };
+  if (directo) return ejecutar();
+  modal("Escribir etiqueta", `${tablaRegistro(clase, o)}
+    <p class="ayuda" style="margin-top:10px">Se sobrescribirá lo que contenga la etiqueta (en una NTAG se borra el mensaje NDEF).</p>`,
+    [{t: "Cancelar"}, {t: "Escribir", c: "azul", f: ejecutar}]);
+}
+
+/* ------------------------------------------------------------ ELIMINAR */
+function borrar(clase, id) {
+  const o = registroDe(clase, id); if (!o) return;
+  const n = clase === "envio" ? productos.filter(h => h.envio_id === id).length : 0;
+  const u = clase === "producto" && o.usuario_id ? usuarioDe(o.usuario_id) : null;
+  modal("Eliminar", `<p>¿Eliminar ${clase === "envio" ? "el envío" : "el producto"} <b>${esc(refDe(clase, o))}</b> de la base de datos?${
+    n ? ` Sus ${n} productos pasarán a «sin envío».` : ""}${u ? ` Se retirará del equipo de ${esc(nombreCompleto(u))}.` : ""}</p>
+    <p class="ayuda">La etiqueta física no se modifica.</p>`,
+    [{t: "Cancelar"}, {t: "Eliminar", c: "rojo", f: async () => {
+      try {
+        await api(`/api/${clase === "envio" ? "envios" : "productos"}/${id}`, {method: "DELETE"});
+        cerrar(); toast("Eliminado"); cargar();
+      } catch (e) { toast(e.message, true); }
+      return false;
+    }}]);
+}
+
+/* ------------------------------------------------------------ TAMPER
+   Cambia el bit virtual de 1 a 0 o de 0 a 1 (para pruebas). */
+async function cambiarTamper(id) {
+  const p = productos.find(x => x.id === id); if (!p) return;
+  const nuevo = p.tamper === 1 ? 0 : 1;
+  try {
+    await api(`/api/productos/${id}/tamper`, {method: "POST", body: {tamper: nuevo}});
+    p.tamper = nuevo; pintar();
+    if (espera && sesionActual && sesionActual.repintar) sesionActual.repintar();
+    toast(`${p.serie}: tamper ${nuevo}${nuevo === 0 ? " · marcado como posiblemente comprometido" : " · correcto"}`, nuevo === 0);
+    cargar();
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ------------------------------------------------------------ RESET
+   Vacía productos, envíos, usuarios, equipos y movimientos y reinicia el nº de serie a 0000000.
+   El Banco de pruebas no se toca. Se pide escribir RESET para evitar un clic accidental. */
+$("#btReset").onclick = () => {
+  modal("Reset de la base de datos", `
+    <p>Se borrarán <b>todos los productos, envíos, usuarios, equipos y movimientos</b> (${productos.length} productos,
+      ${envios.length} envíos, ${usuarios.length} usuarios) y el nº de serie volverá a <span class="ref">0000000</span>.</p>
+    <p class="ayuda">Las etiquetas físicas no se modifican. Los registros del Banco de pruebas se conservan.
+      Esta acción no se puede deshacer.</p>
+    <div class="campo"><label>Escribe RESET para confirmar</label><input id="rConf" autocomplete="off"></div>
+    <p class="err" id="rErr"></p>`, [
+    {t: "Cancelar"},
+    {t: "Vaciar base de datos", c: "rojo", id: "rBoton", f: async () => {
+      try {
+        await api("/api/reset", {method: "POST", body: {confirmacion: $("#rConf").value.trim()}});
+        cerrar(); seleccionado = null; abiertos.clear(); guardarAbiertos();
+        toast("Base de datos vaciada; nº de serie reiniciado"); await cargar(); cargarEstado();
+      } catch (e) { $("#rErr").textContent = e.message; }
+      return false;
+    }}]);
+  const b = $("#rBoton"); b.disabled = true;
+  $("#rConf").oninput = () => b.disabled = $("#rConf").value.trim() !== "RESET";
+  $("#rConf").focus();
+};
+
+/* ------------------------------------------------------------ SESIONES DE LECTURAS SUCESIVAS
+   iniciarSesion(url, alLeer) llama en bucle a un endpoint del servidor que lee UNA
+   etiqueta (espera corta de 1,5 s). 'vistos' guarda los UIDs ya tratados y se envía como
+   'excluir', así una etiqueta que sigue apoyada en el lector no se vuelve a contar.
+   alLeer(r) procesa cada resultado; la sesión acaba con sesion.parar() o cuando
+   alLeer pone sesion.activa = false. Aunque se pulse Finalizar con una petición en
+   curso, su resultado se sigue mostrando (el servidor ya lo ha aplicado). */
+let sesionActual = null;
+function iniciarSesion(url, alLeer) {
+  const s = {activa: true, vistos: []};
+  espera = true; sesionActual = s;
+  s.parar = () => { s.activa = false; return s.fin; };
+  s.fin = (async () => {
+    while (s.activa) {
+      let r;
+      try { r = await api(url, {method: "POST", body: {timeout: 1.5, excluir: s.vistos}}); }
+      catch (e) { await alLeer({estado: "error", mensaje: e.message}); if (s.activa) await dormir(1000); continue; }
+      if (r.estado === "sin_tarjeta") continue;
+      s.vistos.push(r.lectura.uid);
+      await alLeer(r);
+    }
+    espera = false; sesionActual = null;
+  })();
+  return s;
+}
+function estadoSesion(clase, texto) {
+  const el = $("#sEstado"); if (!el) return;
+  el.className = "sesion-estado " + clase;
+  el.innerHTML = (clase === "" ? `<span class="pulso"></span>` : "") + texto;
+}
+function lineaLog(clase, icono, html) {
+  const log = $("#sLog"); if (!log) return;
+  log.insertAdjacentHTML("afterbegin", `<div class="log-it"><span class="ic ${clase}">${icono}</span><span>${html}</span></div>`);
+}
+const avisoTamper = p => p && p.tamper === 0 ?
+  ` <b style="color:var(--error)">· tamper 0: revisar o sustituir</b>` : "";
+
+/* ------------------------------------------------------------ AÑADIR POR LECTURA (Inventario)
+   POST /api/envios/{id}/leer_anadir en bucle hasta pulsar Finalizar. */
+function anadirPorLectura(envioId) {
+  const e = envios.find(x => x.id === envioId); if (!e) return;
+  let n = 0;
+  modal(`Añadir productos al envío ${esc(e.numero)}`, `
+    <div class="sesion-estado" id="sEstado"></div>
+    <p class="ayuda" style="margin:0 0 8px">Acerca las etiquetas de los productos una a una. Cada producto leído se añade
+      a este envío (si estaba en otro envío, se mueve). Pulsa «Finalizar» al terminar la tanda.</p>
+    <h4>Lecturas <span class="meta" id="sCuenta"></span></h4><div class="log" id="sLog"></div>`, [], true);
+  estadoSesion("", "Esperando etiqueta…");
+  const s = iniciarSesion(`/api/envios/${envioId}/leer_anadir`, async r => {
+    if (r.estado === "error") return estadoSesion("mal", esc(r.mensaje) + " · reintentando…");
+    estadoSesion("", "Esperando la siguiente etiqueta…");
+    const p = r.producto, ref = p ? `<b class="ref">${esc(p.serie)}</b> ` : "";
+    if (r.estado === "anadido" || r.estado === "movido") {
+      n++; lineaLog("ok", "✓", ref + esc(r.mensaje) + avisoTamper(p));
+      abiertos.add(envioId); guardarAbiertos(); cargar();
+    } else if (r.estado === "ya") lineaLog("", "•", ref + esc(r.mensaje));
+    else lineaLog("mal", "!", ref + esc(r.mensaje) + ` <span class="uid">UID ${esc(r.lectura.uid)}</span>`);
+    $("#sCuenta").textContent = `· ${n} añadidos`;
+  });
+  ponerBotones([{t: "Finalizar", c: "azul", f: async () => {
+    estadoSesion("", "Finalizando…"); await s.parar();
+    estadoSesion("ok", `Tanda terminada: ${n} productos añadidos al envío ${esc(e.numero)}`);
+    ponerBotones([{t: "Cerrar"}]); cargar(); return false;
+  }}]);
+}
+
+/* ------------------------------------------------------------ USUARIOS
+   formUsuario()   -> alta (POST /api/usuarios) y, si se quiere, vinculación del equipo
+   formUsuario(id) -> edición de nombre, apellidos e identificación (POST /api/usuarios/{id}) */
+$("#btNuevoUsuario").onclick = () => formUsuario(null);
+function formUsuario(id) {
+  const u = id ? usuarioDe(id) : null;
+  if (id && !u) return;
+  modal(u ? `Editar usuario · ${esc(nombreCompleto(u))}` : "Nuevo usuario", `
+    <div class="campos-2">
+      <div class="campo"><label>Nombre</label><input id="uNombre" maxlength="40" placeholder="Ej. Ana" autocomplete="off" value="${esc(u ? u.nombre : "")}"></div>
+      <div class="campo"><label>Apellidos</label><input id="uApellidos" maxlength="60" placeholder="Ej. Pérez Gil" autocomplete="off" value="${esc(u ? u.apellidos : "")}"></div>
+    </div>
+    <div class="campo"><label>Identificación</label><input id="uIdent" maxlength="20" placeholder="Ej. DNI, TIP o nº de empleado" autocomplete="off"
+      style="font-family:var(--mono);text-transform:uppercase" value="${esc(u ? u.identificacion || "" : "")}">
+      <span class="ayuda">Única para cada usuario.</span></div>
+    ${u ? "" : `<p class="ayuda">Al crearlo se puede empezar a vincular su equipo leyendo las etiquetas: 1 casco, 1 chaleco y hasta 2 placas balísticas.</p>`}
+    <p class="err" id="uErr"></p>`, u ? [
+    {t: "Cancelar"},
+    {t: "Guardar", c: "azul", f: () => guardarUsuario(u.id, false)}] : [
+    {t: "Cancelar"},
+    {t: "Solo crear", f: () => guardarUsuario(null, false)},
+    {t: "Crear y vincular equipo", c: "azul", f: () => guardarUsuario(null, true)}]);
+  $("#uNombre").focus();
+  $("#modal").querySelectorAll("input").forEach(i => i.onkeydown = e => { if (e.key === "Enter") guardarUsuario(u ? u.id : null, !u); });
+}
+async function guardarUsuario(id, vincular) {
+  const body = {nombre: $("#uNombre").value, apellidos: $("#uApellidos").value, identificacion: $("#uIdent").value};
+  try {
+    const u = await api(id ? `/api/usuarios/${id}` : "/api/usuarios", {method: "POST", body});
+    await cargar();
+    if (vincular) vincularPorLectura(u.id);
+    else { cerrar(); toast(id ? `Usuario ${nombreCompleto(u)} actualizado` : `Usuario ${nombreCompleto(u)} creado`); }
+  } catch (e) { $("#uErr").textContent = e.message; }
+  return false;
+}
+function borrarUsuario(id) {
+  const u = usuarioDe(id); if (!u) return;
+  const n = nEquipo(id);
+  modal("Eliminar usuario", `<p>¿Eliminar a <b>${esc(nombreCompleto(u))}</b>${u.identificacion ? ` (${esc(u.identificacion)})` : ""}?${
+    n ? ` Sus ${n} productos quedarán sin usuario.` : ""}</p>
+    <p class="ayuda">Se borra su equipo, pero los productos no se borran de la base de datos.</p>`,
+    [{t: "Cancelar"}, {t: "Eliminar", c: "rojo", f: async () => {
+      try { await api(`/api/usuarios/${id}`, {method: "DELETE"}); cerrar(); toast("Usuario eliminado"); cargar(); }
+      catch (e) { toast(e.message, true); }
+      return false;
+    }}]);
+}
+async function desvincular(pid) {
+  const p = productos.find(x => x.id === pid); if (!p) return;
+  const u = usuarioDe(p.usuario_id);
+  try {
+    await api("/api/desvincular", {method: "POST", body: {producto_id: pid}});
+    toast(`${p.serie} desvinculado de ${u ? nombreCompleto(u) : "su usuario"}`);
+    await cargar(); if (sesionActual && sesionActual.repintar) sesionActual.repintar();
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ------------------------------------------------------------ VINCULAR EQUIPO POR LECTURA
+   Lecturas sucesivas que van llenando los huecos del equipo (casco, chaleco, placa 1, placa 2).
+   Termina al pulsar Finalizar o automáticamente cuando el equipo está completo. */
+function vincularPorLectura(usrId) {
+  const u = usuarioDe(usrId); if (!u) return;
+  const nombre = esc(nombreCompleto(u));
+  let ultimo = null;
+  modal(`Vincular equipo · ${nombre}`, `
+    <div class="sesion-estado" id="sEstado"></div>
+    <div id="sHuecos">${htmlHuecos(usrId)}</div>
+    <h4>Lecturas</h4><div class="log" id="sLog"></div>`, [], true);
+  const repintar = () => { const h = $("#sHuecos"); if (h) h.innerHTML = htmlHuecos(usrId, ultimo); };
+  if (nEquipo(usrId) >= 4) {
+    estadoSesion("ok", "El equipo ya está completo. Desvincula algún producto para cambiarlo.");
+    return ponerBotones([{t: "Cerrar"}]);
+  }
+  estadoSesion("", "Acerca las etiquetas del equipo una a una…");
+  const s = iniciarSesion(`/api/usuarios/${usrId}/leer_vincular`, async r => {
+    if (r.estado === "error") return estadoSesion("mal", esc(r.mensaje) + " · reintentando…");
+    const p = r.producto, ref = p && p.serie ? `<b class="ref">${esc(p.serie)}</b> ` : "";
+    if (r.estado === "vinculado") { ultimo = p.id; lineaLog("ok", "✓", ref + esc(r.mensaje) + avisoTamper(p)); }
+    else if (r.estado === "ya") lineaLog("", "•", ref + esc(r.mensaje));
+    else lineaLog("mal", "!", ref + esc(r.mensaje) + ` <span class="uid">UID ${esc(r.lectura.uid)}</span>`);
+    await cargar(); repintar();
+    if (r.completo) {
+      s.activa = false;
+      estadoSesion("ok", `Equipo completo: casco, chaleco y 2 placas vinculados a ${nombre}`);
+      ponerBotones([{t: "Cerrar"}]);
+    } else estadoSesion("", "Esperando la siguiente etiqueta…");
+  });
+  s.repintar = repintar;
+  ponerBotones([{t: "Finalizar", c: "azul", f: async () => {
+    estadoSesion("", "Finalizando…"); await s.parar(); await cargar(); repintar();
+    const n = nEquipo(usrId);
+    estadoSesion(n >= 4 ? "ok" : "aviso", `Vinculación terminada: ${n} de 4 huecos ocupados`);
+    ponerBotones([{t: "Cerrar"}]); return false;
+  }}]);
+}
+
+/* ------------------------------------------------------------ VERIFICACIÓN
+   Lecturas sucesivas que se contrastan con el equipo registrado del usuario.
+   - Producto propio y correcto       -> tick verde junto a él
+   - Producto propio con discordancia -> aviso rojo desplegable en su fila
+   - Etiqueta ajena / no registrada    -> aviso rojo desplegable en «Incidencias»
+   - Tamper 0                          -> aviso que recomienda revisar o sustituir
+   Termina sola cuando se han leído todos los productos registrados, o con «Salir de la
+   verificación» (útil para comprobar un solo producto del equipo). */
+const NOMBRE_DISC = {sin_datos: "Etiqueta sin datos de producto", uhf: "Etiqueta de envío (UHF)",
+  no_registrado: "Producto no registrado", tipo: "No es del tipo registrado", uid: "Etiqueta distinta de la registrada",
+  no_asociado: "No está asociado a este usuario", otra_persona: "En el equipo de otro usuario"};
+function htmlDiscordancia(r) {
+  const p = r.producto, d = r.discordancias || [];
+  const titulo = d.map(x => NOMBRE_DISC[x.tipo] || x.tipo).join(" · ");
+  const ref = p ? p.serie : r.leido ? (r.leido.serie || r.leido.numero) : "";
+  return `<details class="inc"><summary><span class="ic mal">!</span>
+      ${ref ? `<span class="ref">${esc(ref)}</span>` : ""} ${esc(titulo)}</summary>
+    <div class="det"><ul style="margin:0;padding-left:16px">${d.map(x => `<li>${esc(x.mensaje)}</li>`).join("")}</ul>
+      <div class="ayuda" style="margin-top:6px">UID ${esc(r.lectura.uid)}${conTarjeta(r.lectura.tarjeta)}${
+        p ? ` · ${esc(p.tipo_producto)} · ${esc(TIPOS[p.tipo_producto] || "")} · tamper ${p.tamper}` : ""}</div>
+      ${r.lectura.texto ? `<div class="crudo" style="margin-top:6px">${esc(r.lectura.texto)}</div>` : ""}</div></details>`;
+}
+function verificar(usrId) {
+  const u = usuarioDe(usrId); if (!u) return;
+  const nombre = esc(nombreCompleto(u));
+  // productos que hay que verificar, en el orden de los huecos
+  const lista = huecosDe(usrId).filter(h => h.p).map(h => ({...h, estado: "pend", r: null}));
+  if (!lista.length) return modal(`Verificación · ${nombre}`,
+    `<p>${nombre} no tiene ningún producto en su equipo. Usa «Vincular por lectura» primero.</p>`);
+  let incidencias = 0, terminada = false;
+  modal(`Verificación · ${nombre}`, `
+    <div class="sesion-estado" id="sEstado"></div>
+    <div id="vLista"></div>
+    <h4>Incidencias <span class="meta" id="vNinc"></span></h4>
+    <div id="vInc"><div class="vacio">Sin incidencias.</div></div>`, [], true);
+  const repintar = () => {
+    const el = $("#vLista"); if (!el) return;
+    el.innerHTML = lista.map(it => {
+      const p = productos.find(x => x.id === it.p.id) || it.p;   // tamper actualizado
+      const ic = it.estado === "ok" ? `<span class="ic ok">✓</span>` : it.estado === "mal" ? `<span class="ic mal">!</span>` : `<span class="ic"></span>`;
+      const txt = it.estado === "ok" ? "Verificado" : it.estado === "mal" ? "Discordancia" : "Pendiente de lectura";
+      return `<div class="ver-it ${it.estado === "pend" ? "" : it.estado}">
+        <div class="fila-v">${ic}<span class="h-tit" style="min-width:64px">${it.nombre}</span>
+          <span class="ref">${esc(p.serie)}</span><span class="uid">${p.uid ? esc(p.uid) : ""}</span>
+          <span class="estado-v">${txt}</span></div>
+        ${it.estado === "mal" ? htmlDiscordancia(it.r) : ""}
+        ${it.estado !== "pend" && p.tamper === 0 ? `<div class="aviso-tamper"><b>Tamper 0:</b> producto posiblemente
+          comprometido. Se recomienda revisarlo o sustituirlo.</div>` : ""}
+      </div>`;
+    }).join("");
+  };
+  repintar();
+  estadoSesion("", `Acerca las etiquetas del equipo (${lista.length} registradas)…`);
+  const resumenFinal = async completa => {
+    terminada = true;
+    const ok = lista.filter(i => i.estado === "ok").length;
+    const tamper0 = lista.filter(i => i.estado !== "pend" && (productos.find(x => x.id === i.p.id) || i.p).tamper === 0).length;
+    try { await api(`/api/usuarios/${usrId}/verificacion_fin`, {method: "POST",
+      body: {verificados: ok, total: lista.length, incidencias, completa}}); } catch (e) {}
+    if (completa && ok === lista.length && !incidencias && !tamper0)
+      estadoSesion("ok", `Todo correcto: los ${lista.length} productos del equipo de ${nombre} están verificados`);
+    else if (completa && ok === lista.length)
+      estadoSesion("aviso", `Equipo verificado (${ok}/${lista.length}), pero ${[
+        tamper0 ? `${tamper0} producto(s) con tamper 0: revisar o sustituir` : "",
+        incidencias ? `${incidencias} etiqueta(s) leída(s) con incidencias` : ""].filter(Boolean).join(" y ")}`);
+    else if (completa)
+      estadoSesion("mal", `Verificación con discordancias: ${ok} de ${lista.length} productos correctos`);
+    else
+      estadoSesion(incidencias || lista.some(i => i.estado === "mal") ? "mal" : "aviso",
+        `Verificación interrumpida: ${ok} de ${lista.length} productos verificados`);
+    ponerBotones([{t: "Cerrar"}]); cargar();
+  };
+  const s = iniciarSesion(`/api/usuarios/${usrId}/leer_verificar`, async r => {
+    if (r.estado === "error") return estadoSesion("mal", esc(r.mensaje) + " · reintentando…");
+    const it = r.producto && lista.find(i => i.p.id === r.producto.id);
+    if (it) { it.estado = r.estado === "ok" ? "ok" : "mal"; it.r = r; }
+    else {     // etiqueta que no es de su equipo
+      incidencias++;
+      if (incidencias === 1) $("#vInc").innerHTML = "";
+      $("#vInc").insertAdjacentHTML("afterbegin", htmlDiscordancia(r));
+      $("#vNinc").textContent = `· ${incidencias}`;
+    }
+    await cargar(); repintar();
+    const pendientes = lista.filter(i => i.estado === "pend").length;
+    if (!pendientes) { s.activa = false; await resumenFinal(true); }
+    else estadoSesion("", `Esperando etiqueta… (${lista.length - pendientes} de ${lista.length} leídas)`);
+  });
+  s.repintar = repintar;
+  ponerBotones([{t: "Salir de la verificación", f: async () => {
+    estadoSesion("", "Finalizando…"); await s.parar();
+    if (!terminada) await resumenFinal(false);
+    return false;
+  }}]);
+}
+
+/* ------------------------------------------------------------ BANCO DE PRUEBAS
+   POST /api/banco/iniciar arranca la prueba en el servidor (hilo aparte). La web consulta
+   GET /api/banco/estado cada 0,4 s mientras dura y la muestra en «Prueba en curso».
+   Al terminar, el servidor guarda el registro "Prueba N" con fecha y hora. */
+let banco = {activa: false}, sondeoBanco = null;
+const pct = (a, b) => b ? `${(100 * a / b).toFixed(1).replace(".0", "")} %` : "—";
+const ms = v => v == null ? "—" : `${v.toFixed(1)} ms`;
+const opsS = v => v ? `${(1000 / v).toFixed(2)} op/s` : "—";
+
+function kpis(R) {
+  const L = R.lecturas, E = R.escrituras;
+  const k = (v, t) => `<div class="kpi"><b>${v}</b><span>${t}</span></div>`;
+  return `<div class="kpis">${k(ms(L && L.media_ms), "Tiempo medio de lectura")}${k(E ? ms(E.media_ms) : "—", "Tiempo medio de escritura")}${
+    k(L ? pct(L.ok, L.total) : "—", "Lecturas sin errores")}${k(E ? pct(E.ok, E.total) : "—", "Escrituras sin errores")}</div>`;
+}
+function tablaResultados(P) {
+  const R = P.resultados, A = P.parametros, L = R.lecturas, E = R.escrituras;
+  const col = S => S ? [S.total, `${S.ok} (${pct(S.ok, S.total)})`, ms(S.media_ms), opsS(S.media_ms),
+    `${ms(S.min_ms)} / ${ms(S.max_ms)}`] : ["—", "—", "—", "—", "—"];
+  const cl = col(L), ce = col(E);
+  const filas = ["Operaciones", "Sin errores", "Tiempo medio", "Velocidad media", "Mín / máx"];
+  const extra = [
+    ["Tipo de prueba", esc(P.tipo_nombre)],
+    ["Etiqueta", `<span class="uid">${esc(R.uid)}${conTarjeta(R.tarjeta)}</span>`],
+    ["Ciclos", `${R.ciclos} de ${A.repeticiones}${R.cancelada ? " · cancelada" : ""}`],
+    R.verificadas != null ? ["Datos verificados (leído = escrito)", `${R.verificadas} de ${R.ciclos} (${pct(R.verificadas, R.ciclos)})`] : null,
+    A.texto ? ["Texto escrito", `<span class="ref">${esc(A.texto)}</span>`] : null,
+    A.serie_inicial ? ["Serie inicial", `<span class="ref">${esc(A.serie_inicial)}</span>`] : null,
+    R.restaurada != null ? ["Contenido original restaurado", R.restaurada ? "Sí" : "No (falló la restauración)"] : null,
+    A.distancia_cm ? ["Distancia", `${esc(A.distancia_cm)} cm`] : null,
+    A.angulo_grados ? ["Ángulo", `${esc(A.angulo_grados)}°`] : null,
+    A.notas ? ["Notas", esc(A.notas)] : null,
+    ["Duración total", `${R.duracion_s} s`]].filter(Boolean);
+  return kpis(R) + `
+    <table class="cmp"><tr><th></th><th>Lecturas</th><th>Escrituras</th></tr>
+      ${filas.map((f, i) => `<tr><th>${f}</th><td class="num">${cl[i]}</td><td class="num">${ce[i]}</td></tr>`).join("")}</table>
+    <table class="cmp" style="margin-top:12px">${extra.map(([a, b]) => `<tr><th style="width:42%">${a}</th><td>${b}</td></tr>`).join("")}</table>
+    ${R.n_errores ? `<h4>Errores (${R.n_errores})</h4><ul style="margin:0;padding-left:18px;font-size:12.5px">${R.errores.map(e =>
+      `<li>Ciclo ${e.ciclo} · ${esc(e.op)}: ${esc(e.error)}</li>`).join("")}${R.n_errores > R.errores.length ?
+      `<li>… y ${R.n_errores - R.errores.length} más</li>` : ""}</ul>` : ""}
+    <p class="ayuda" style="margin-top:10px">Cada tiempo incluye la detección de la etiqueta. La velocidad media es 1 / tiempo medio.</p>`;
+}
+function pintarBanco() {
+  $("#resumenBanco").textContent = pruebas.length ? `${pruebas.length} pruebas` : "";
+  $("#pruebas").innerHTML = pruebas.map(P => {
+    const R = P.resultados, L = R.lecturas, E = R.escrituras;
+    return `<details class="prueba" data-prueba="${P.id}" ${pruebasAbiertas.has(P.id) ? "open" : ""}>
+      <summary><span class="flecha">▶</span><b>${esc(P.nombre)}</b><span>${esc(P.tipo_nombre)}</span>
+        <span class="meta">${esc(fFecha(P.fecha))}</span>
+        <span class="cnt">${L ? `Lect. ${pct(L.ok, L.total)} · ${ms(L.media_ms)}` : ""}${E ? ` · Esc. ${pct(E.ok, E.total)} · ${ms(E.media_ms)}` : ""}${R.cancelada ? " · cancelada" : ""}</span></summary>
+      <div class="cuerpo-p">${tablaResultados(P)}</div></details>`;
+  }).join("") || `<div class="vacio">Todavía no hay pruebas. Pulsa «Iniciar prueba».</div>`;
+  pintarCurso();
+}
+// recuerda qué pruebas están desplegadas para que el repintado no las cierre
+document.addEventListener("toggle", e => {
+  const d = e.target; if (!d.dataset || !d.dataset.prueba) return;
+  d.open ? pruebasAbiertas.add(+d.dataset.prueba) : pruebasAbiertas.delete(+d.dataset.prueba);
+}, true);
+
+function pintarCurso() {
+  const el = $("#bancoCurso");
+  if (!banco.activa && !banco.fase) {
+    el.innerHTML = `<p class="ayuda" style="margin-top:0">No hay ninguna prueba en marcha.</p>
+      ${Object.values(TIPOS_PRUEBA).map(([t, d]) => `<p style="margin:0 0 8px"><b>${t}.</b> <span class="ayuda">${d}</span></p>`).join("")}
+      <button class="bt azul" style="margin-top:6px;padding:7px 14px" onclick="abrirNuevaPrueba()">Iniciar prueba</button>`;
+    return;
+  }
+  const P = banco.parcial || {}, L = P.lecturas, E = P.escrituras;
+  const hecho = banco.hecho || 0;
+  el.innerHTML = `
+    <p style="margin:0"><b>${esc((TIPOS_PRUEBA[banco.tipo] || [""])[0])}</b></p>
+    <p class="ayuda" style="margin:2px 0 0">${esc(banco.fase || "")}${banco.activa ? "" : ` · ${hecho} de ${banco.total} ciclos`}</p>
+    <div class="barra-prog"><i style="width:${banco.total ? 100 * hecho / banco.total : 0}%"></i></div>
+    ${banco.error ? `<p class="err">${esc(banco.error)}</p>` : ""}
+    <table class="cmp">
+      <tr><th></th><th>Lecturas</th><th>Escrituras</th></tr>
+      <tr><th>Sin errores</th><td class="num">${L ? `${L.ok}/${L.total}` : "—"}</td><td class="num">${E ? `${E.ok}/${E.total}` : "—"}</td></tr>
+      <tr><th>Tiempo medio</th><td class="num">${ms(L && L.media_ms)}</td><td class="num">${ms(E && E.media_ms)}</td></tr>
+    </table>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      ${banco.activa ? `<button class="bt rojo" style="padding:6px 14px" onclick="cancelarPrueba()">Cancelar prueba</button>` :
+        `<button class="bt" style="padding:6px 14px" onclick="banco={activa:false};pintarCurso()">Cerrar</button>
+         <button class="bt azul" style="padding:6px 14px" onclick="abrirNuevaPrueba()">Nueva prueba</button>`}
+    </div>
+    <p class="ayuda" style="margin-top:10px">${banco.activa ? "No retires la etiqueta del lector hasta que termine." : ""}</p>`;
+}
+async function sondearBanco() {
+  try { banco = await api("/api/banco/estado"); } catch (e) { return; }
+  pintarCurso();
+  if (banco.activa) { sondeoBanco = setTimeout(sondearBanco, 400); return; }
+  sondeoBanco = null;
+  if (banco.prueba_id) {
+    pruebasAbiertas.add(banco.prueba_id); await cargar();
+    const P = pruebas.find(x => x.id === banco.prueba_id);
+    toast(`${P ? P.nombre : "Prueba"} terminada y registrada`);
+  } else if (banco.error) toast(banco.error, true);
+}
+function abrirNuevaPrueba() {
+  if (banco.activa) return toast("Ya hay una prueba en curso", true);
+  modal("Iniciar prueba", `
+    <div class="tipos-prueba">${Object.entries(TIPOS_PRUEBA).map(([k, [t, d]], i) =>
+      `<label><input type="radio" name="tPrueba" value="${k}" ${i ? "" : "checked"}><span><b>${t}</b><span>${d}</span></span></label>`).join("")}</div>
+    <div class="campos-2">
+      <div class="campo"><label>Repeticiones</label><input id="bN" type="number" min="1" max="1000" value="20"></div>
+      <div class="campo" id="bTextoC" hidden><label>Texto a escribir (máx. 47 bytes)</label><input id="bTexto" maxlength="47" value="PRUEBA-BANCO"></div>
+      <div class="campo" id="bSerieC" hidden><label>Serie inicial (hexadecimal)</label><input id="bSerie" maxlength="7" value="0000000" style="font-family:var(--mono);text-transform:uppercase"></div>
+    </div>
+    <label class="check" id="bRestC" hidden><input type="checkbox" id="bRest" checked> Restaurar el contenido original de la etiqueta al terminar</label>
+    <div class="campos-2">
+      <div class="campo"><label>Distancia (cm) · opcional</label><input id="bDist" maxlength="12" placeholder="Ej. 2"></div>
+      <div class="campo"><label>Ángulo (°) · opcional</label><input id="bAng" maxlength="12" placeholder="Ej. 0"></div>
+    </div>
+    <div class="campo"><label>Notas · opcional</label><input id="bNotas" maxlength="200" placeholder="Ej. NTAG213 sobre placa, sin funda"></div>
+    <p class="ayuda" id="bAviso">Coloca la etiqueta sobre el lector y no la retires hasta que termine la prueba.</p>
+    <p class="err" id="bErr"></p>`, [
+    {t: "Cancelar"},
+    {t: "Iniciar", c: "azul", f: async () => {
+      const tipo = document.querySelector("input[name=tPrueba]:checked").value;
+      try {
+        banco = await api("/api/banco/iniciar", {method: "POST", body: {tipo, repeticiones: +$("#bN").value,
+          texto: $("#bTexto").value, serie_inicial: $("#bSerie").value.trim().toUpperCase(), restaurar: $("#bRest").checked,
+          distancia_cm: $("#bDist").value, angulo_grados: $("#bAng").value, notas: $("#bNotas").value}});
+        cerrar(); verPestana("banco"); pintarCurso(); sondearBanco();
+      } catch (e) { $("#bErr").textContent = e.message; }
+      return false;
+    }}]);
+  const actualizar = () => {
+    const tipo = document.querySelector("input[name=tPrueba]:checked").value;
+    $("#bTextoC").hidden = tipo !== "escritura_lectura";
+    $("#bSerieC").hidden = tipo !== "datos_distintos";
+    $("#bRestC").hidden = tipo === "lectura";
+    $("#bAviso").textContent = tipo === "lectura" ? "Coloca la etiqueta sobre el lector y no la retires hasta que termine la prueba."
+      : "Esta prueba sobrescribe la etiqueta. Coloca la etiqueta y no la retires hasta que termine.";
+  };
+  document.querySelectorAll("input[name=tPrueba]").forEach(r => r.onchange = actualizar);
+}
+async function cancelarPrueba() {
+  try { await api("/api/banco/cancelar", {method: "POST"}); toast("Cancelando: se guardará lo realizado hasta ahora"); }
+  catch (e) { toast(e.message, true); }
+}
+$("#btIniciarPrueba").onclick = abrirNuevaPrueba;
+
+/* ------------------------------------------------------------ EXPORTAR A EXCEL
+   El servidor genera el libro (exportar_excel.py) y lo guarda en la carpeta de exportación,
+   dentro de la subcarpeta de la pestaña. La primera vez (o si la carpeta ya no existe)
+   responde necesita_carpeta y se pide: con la ventana nativa del PC (Elegir carpeta…) o
+   escribiendo la ruta. Al elegirla se crean las tres subcarpetas. */
+const NOMBRE_PESTANA = {inv: "Inventario y envíos", ver: "Verificación en campo", banco: "Banco de pruebas"};
+let carpetaExport = null;
+async function infoCarpeta() {
+  try { carpetaExport = (await api("/api/exportar/carpeta")).carpeta; } catch (e) {}
+  return carpetaExport;
+}
+const isoLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fmtDia = d => d.toLocaleDateString("es-ES", {day: "2-digit", month: "2-digit", year: "numeric"});
+// Mismo cálculo que el servidor: día, semana de lunes a domingo o mes natural de la fecha elegida
+function textoPeriodo(periodo, iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number), f = new Date(y, m - 1, d);
+  if (periodo === "dia") return `Día ${fmtDia(f)}`;
+  if (periodo === "semana") {
+    const a = new Date(f); a.setDate(f.getDate() - ((f.getDay() + 6) % 7));
+    const b = new Date(a); b.setDate(a.getDate() + 6);
+    return `Semana del ${fmtDia(a)} al ${fmtDia(b)}`;
+  }
+  return `Mes de ${f.toLocaleDateString("es-ES", {month: "long", year: "numeric"})}`;
+}
+const htmlDestino = p => carpetaExport
+  ? `<p class="ayuda" style="margin:10px 0 4px">Se guardará en:</p><div class="ruta-exp">${esc(carpetaExport)}\\${NOMBRE_PESTANA[p]}</div>
+     <p class="ayuda" style="margin-top:4px"><a href="#" onclick="pedirCarpeta(null);return false">Cambiar carpeta</a></p>`
+  : `<p class="ayuda" style="margin-top:10px">Es la primera exportación: antes se te pedirá la carpeta donde guardar los Excel.</p>`;
+
+$("#btExpInv").onclick = async () => {
+  await infoCarpeta();
+  let periodo = "dia";
+  const m = modal("Exportar a Excel · Inventario y envíos", `
+    <div class="seg" id="ePer"><button data-p="dia" class="on">Día</button><button data-p="semana">Semana</button><button data-p="mes">Mes</button></div>
+    <div class="campo"><label>Fecha de referencia</label><input type="date" id="eFecha" value="${isoLocal(new Date())}"></div>
+    <p style="margin:0 0 6px"><b id="eRango"></b></p>
+    <p class="ayuda" style="margin:0">Entran los envíos y productos creados en el periodo o con algún movimiento en él.
+      El libro tiene tres hojas: <b>Inventario</b> (cada envío con sus productos y después los productos sin asignar,
+      de más nuevo a más antiguo), <b>Envíos</b> y <b>Movimientos</b> del periodo.</p>
+    ${htmlDestino("inv")}
+    <p class="err" id="eErr"></p>`,
+    [{t: "Cancelar"}, {t: "Exportar", c: "azul", f: () => exportarExcel("inv", {periodo, fecha: $("#eFecha").value})}]);
+  const rango = () => $("#eRango").textContent = textoPeriodo(periodo, $("#eFecha").value);
+  m.querySelectorAll("#ePer button").forEach(b => b.onclick = () => {
+    periodo = b.dataset.p; m.querySelectorAll("#ePer button").forEach(x => x.classList.toggle("on", x === b)); rango();
+  });
+  $("#eFecha").oninput = rango; rango();
+};
+$("#btExpVer").onclick = () => exportarExcel("ver", {});
+$("#btExpBanco").onclick = () => exportarExcel("banco", {});
+
+async function exportarExcel(p, body) {
+  esperando("Exportar a Excel", `Generando el Excel de ${NOMBRE_PESTANA[p]}…`);
+  let r;
+  try { r = await api(`/api/exportar/${p}`, {method: "POST", body}); }
+  catch (e) { espera = false; modal("No se pudo exportar", `<p class="err">${esc(e.message)}</p>`); return false; }
+  espera = false;
+  if (r.necesita_carpeta) { pedirCarpeta(() => exportarExcel(p, body)); return false; }
+  modal("Excel exportado", `<p style="margin-top:0">Se ha guardado <b>${esc(r.nombre)}</b> en:</p>
+    <div class="ruta-exp">${esc(r.carpeta)}</div>`,
+    [{t: "Cambiar carpeta", f: () => { pedirCarpeta(null); return false; }},
+     {t: "Mostrar en la carpeta", f: async () => {
+       try { await api("/api/exportar/abrir", {method: "POST", body: {ruta: r.archivo}}); }
+       catch (e) { toast(e.message, true); }
+       return false; }},
+     {t: "Cerrar", c: "azul"}]);
+  return false;
+}
+
+// Pide la carpeta de exportación. 'despues' = exportación pendiente que se lanza al elegirla.
+async function pedirCarpeta(despues) {
+  await infoCarpeta();
+  modal("Carpeta de exportación", `
+    <p style="margin-top:0">Elige la carpeta donde se guardarán los Excel. Dentro se crearán tres carpetas, una por pestaña:
+      <b>Inventario y envíos</b>, <b>Verificación en campo</b> y <b>Banco de pruebas</b>.</p>
+    ${carpetaExport ? `<p class="ayuda" style="margin:0 0 4px">Carpeta actual:</p><div class="ruta-exp" style="margin-bottom:12px">${esc(carpetaExport)}</div>` : ""}
+    <div class="campo"><label>O escribe la ruta completa</label><input id="cRuta" placeholder="D:\\Clase\\TFG\\Exportaciones" autocomplete="off"></div>
+    <p class="ayuda" id="cInfo"></p><p class="err" id="cErr"></p>`, [
+    {t: "Cancelar"},
+    {t: "Usar esta ruta", f: () => fijar(true)},
+    {t: "Elegir carpeta…", c: "azul", f: () => fijar(false)}]);
+  async function fijar(escrita) {
+    const ruta = $("#cRuta").value.trim();
+    $("#cErr").textContent = "";
+    if (escrita && !ruta) { $("#cErr").textContent = "Escribe la ruta de la carpeta."; return false; }
+    if (!escrita) $("#cInfo").textContent = "Se ha abierto una ventana en tu PC para elegir la carpeta (puede quedar detrás del navegador)…";
+    try {
+      const r = await api("/api/exportar/carpeta", {method: "POST", body: escrita ? {ruta} : {}});
+      $("#cInfo").textContent = "";
+      if (r.cancelado) { $("#cErr").textContent = "No se eligió ninguna carpeta."; return false; }
+      carpetaExport = r.carpeta;
+      toast("Carpeta de exportación guardada");
+      if (despues) return despues();
+      cerrar();
+    } catch (e) {
+      $("#cInfo").textContent = "";
+      $("#cErr").textContent = e.message + (escrita ? "" : ". Puedes escribir la ruta en el campo de arriba.");
+    }
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------ arranque
+   Recarga la lista cada 5 s (para ver cambios hechos desde otra pestaña) y el estado
+   del lector cada 20 s, salvo mientras hay una operación o un arrastre en curso.
+   Si al abrir la página ya había una prueba del banco en marcha, se sigue su progreso. */
+cargarEstado(); cargar();
+api("/api/banco/estado").then(b => { if (b.activa) { banco = b; sondearBanco(); } }).catch(() => {});
+setInterval(() => { if (!espera && arrastrado == null) cargar(); }, 5000);
+setInterval(() => { if (!espera) cargarEstado(); }, 20000);
+</script>
+</body>
+</html>
